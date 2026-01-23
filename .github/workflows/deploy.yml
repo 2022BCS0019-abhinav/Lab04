@@ -88,7 +88,10 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/abhinavbhagwat-2022bcs0019-wine-api:latest .
+          docker buildx build \
+            --file Dockerfile \
+            --tag ${{ secrets.DOCKERHUB_USERNAME }}/abhinavbhagwat-2022bcs0019-wine-api:latest \
+            .
 
       - name: Push Docker image
         run: |
