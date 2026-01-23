@@ -86,12 +86,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build Docker image
+      - name: Disable BuildKit
+        run: echo "DOCKER_BUILDKIT=0" >> $GITHUB_ENV
+
+      - name: Build Docker image (classic)
         run: |
-          docker buildx build \
-            --file Dockerfile \
-            --tag ${{ secrets.DOCKERHUB_USERNAME }}/abhinavbhagwat-2022bcs0019-wine-api:latest \
-            .
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/abhinavbhagwat-2022bcs0019-wine-api:latest .
 
       - name: Push Docker image
         run: |
