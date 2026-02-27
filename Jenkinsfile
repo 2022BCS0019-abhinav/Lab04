@@ -4,10 +4,16 @@ pipeline {
     environment {
         IMAGE = "abhinavbcs0019/wine-api-2022bcs0019"
         CONTAINER_NAME = "wine-api-test"
-        PORT = "8000"
+        NETWORK = "jenkins-net"
     }
 
     stages {
+
+        stage('Create Network') {
+            steps {
+                sh "docker network create $NETWORK || true"
+            }
+        }
 
         stage('Pull Image') {
             steps {
@@ -18,7 +24,7 @@ pipeline {
         stage('Run Container') {
             steps {
                 sh """
-                docker run -d -p $PORT:8000 --name $CONTAINER_NAME $IMAGE
+                docker run -d --network $NETWORK --name $CONTAINER_NAME $IMAGE
                 """
             }
         }
@@ -29,7 +35,7 @@ pipeline {
                     timeout(time: 1, unit: 'MINUTES') {
                         waitUntil {
                             def response = sh(
-                                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:$PORT/docs || true",
+                                script: "docker exec $CONTAINER_NAME curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/docs || true",
                                 returnStdout: true
                             ).trim()
                             return (response == "200")
@@ -43,7 +49,7 @@ pipeline {
             steps {
                 script {
                     def response = sh(
-                        script: "curl -s -X POST http://localhost:$PORT/predict -H 'Content-Type: application/json' -d @tests/valid_input.json",
+                        script: "docker exec $CONTAINER_NAME curl -s -X POST http://localhost:8000/predict -H 'Content-Type: application/json' -d @/app/tests/valid_input.json",
                         returnStdout: true
                     ).trim()
 
@@ -60,7 +66,7 @@ pipeline {
             steps {
                 script {
                     def response = sh(
-                        script: "curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:$PORT/predict -H 'Content-Type: application/json' -d @tests/invalid_input.json",
+                        script: "docker exec $CONTAINER_NAME curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8000/predict -H 'Content-Type: application/json' -d @/app/tests/invalid_input.json",
                         returnStdout: true
                     ).trim()
 
