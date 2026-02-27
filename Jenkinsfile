@@ -2,62 +2,91 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "abhinavbcs0019/wine-api-2022bcs0019"
-        DOCKER_CREDENTIALS = "dockerhub-credentials"
+        IMAGE = "abhinavbcs0019/wine-api-2022bcs0019"
+        CONTAINER_NAME = "wine-api-test"
+        PORT = "8000"
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Pull Image') {
             steps {
-                git branch: 'main', url: 'https://github.com/2022BCS0019-abhinav/Lab04.git'
+                sh "docker pull $IMAGE"
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Run Container') {
             steps {
-                sh '''
-                python3 -m venv venv
-                . venv/bin/activate
-                pip install -r requirements.txt
-                '''
+                sh """
+                docker run -d -p $PORT:8000 --name $CONTAINER_NAME $IMAGE
+                """
             }
         }
 
-        stage('Train Model') {
+        stage('Wait for Service Readiness') {
             steps {
-                sh '''
-                . venv/bin/activate
-                python scripts/train.py
-                '''
-            }
-        }
-
-        stage('Print Metrics with Name and Roll No') {
-            steps {
-                sh '''
-                echo "Student Name: Abhinav Bhagwat"
-                echo "Roll Number: 2022BCS0019"
-                cat metrics.json
-                '''
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                sh 'docker build -t $DOCKER_IMAGE .'
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: DOCKER_CREDENTIALS, usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh '''
-                    echo $PASS | docker login -u $USER --password-stdin
-                    docker push $DOCKER_IMAGE
-                    '''
+                script {
+                    timeout(time: 1, unit: 'MINUTES') {
+                        waitUntil {
+                            def response = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' http://localhost:$PORT/docs || true",
+                                returnStdout: true
+                            ).trim()
+                            return (response == "200")
+                        }
+                    }
                 }
             }
+        }
+
+        stage('Valid Inference Test') {
+            steps {
+                script {
+                    def response = sh(
+                        script: "curl -s -X POST http://localhost:$PORT/predict -H 'Content-Type: application/json' -d @tests/valid_input.json",
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Valid Response: ${response}"
+
+                    if (!response.contains("wine_quality")) {
+                        error("Prediction field missing!")
+                    }
+                }
+            }
+        }
+
+        stage('Invalid Inference Test') {
+            steps {
+                script {
+                    def response = sh(
+                        script: "curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:$PORT/predict -H 'Content-Type: application/json' -d @tests/invalid_input.json",
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Invalid Request HTTP Code: ${response}"
+
+                    if (response == "200") {
+                        error("Invalid request did not fail!")
+                    }
+                }
+            }
+        }
+
+        stage('Stop Container') {
+            steps {
+                sh """
+                docker stop $CONTAINER_NAME || true
+                docker rm $CONTAINER_NAME || true
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            sh "docker stop $CONTAINER_NAME || true"
+            sh "docker rm $CONTAINER_NAME || true"
         }
     }
 }
